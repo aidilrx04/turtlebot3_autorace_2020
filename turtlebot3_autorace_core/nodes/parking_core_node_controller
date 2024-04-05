@@ -39,14 +39,16 @@ class CoreNodeController():
         # publishes orders
         self.pub_parking_order = rospy.Publisher('/detect/parking_order', UInt8, queue_size=1)   
         self.pub_mode_return = rospy.Publisher('/core/returned_mode', UInt8, queue_size=1)
+        self.pub_parking_start = rospy.Publisher('/control/parking_start', UInt8, queue_size=1)
+        self.pub_trigger_parking = rospy.Publisher('/detect/trigger_parking', UInt8, queue_size=1)
 
         self.CurrentMode = Enum('CurrentMode', 'idle lane_following parking')
         self.current_mode = self.CurrentMode.idle.value
 
-        self.StepOfParking = Enum('StepOfParking', 'parking exit')
-        self.current_step_parking = self.StepOfParking.parking.value
+        self.StepOfParking = Enum('StepOfParking', 'searching_parking_point_line searching_nonreserved_parking_area parking')
+        self.current_step_parking = self.StepOfParking.searching_parking_point_line.value
 
-        self.Launcher = Enum('Launcher', 'launch_camera_ex_calib launch_detect_sign launch_detect_lane launch_control_lane launch_detect_parking launch_control_moving')
+        self.Launcher = Enum('Launcher', 'launch_camera_ex_calib launch_detect_sign launch_detect_lane launch_control_lane launch_detect_parking launch_control_moving launch_control_parking')
         self.uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
         
         self.launch_camera_launched = False
@@ -55,6 +57,9 @@ class CoreNodeController():
         self.launch_detect_parking_launched = False
         self.launch_control_lane_launched = False
         self.launch_control_moving_launched = False
+        self.launch_control_parking_launched = False
+
+        self.is_parking_start = False
 
         self.is_triggered = False
 
@@ -66,20 +71,20 @@ class CoreNodeController():
             loop_rate.sleep()
 
     def cbReceiveMode(self, mode_msg):
-        rospy.loginfo("starts the progress with %d", mode_msg.data)
+        # rospy.loginfo("starts the progress with %d", mode_msg.data)
         
         self.current_mode = mode_msg.data
         self.is_triggered = True
 
     def cbParkingStamped(self, parking_msg):
-        rospy.loginfo("Parking Step changed from %d", self.current_step_parking)
+        # rospy.loginfo("Parking Step changed from %d", self.current_step_parking)
         self.current_step_parking = parking_msg.data
 
-        if self.current_step_parking == self.StepOfParking.exit.value:
-            self.current_mode = self.CurrentMode.lane_following.value
-            msg_mode_return = UInt8()
-            msg_mode_return.data = self.current_mode
-            self.pub_mode_return.publish(msg_mode_return)
+        # if self.current_step_parking == self.StepOfParking.exit.value:
+        #     self.current_mode = self.CurrentMode.lane_following.value
+        #     msg_mode_return = UInt8()
+        #     msg_mode_return.data = self.current_mode
+        #     self.pub_mode_return.publish(msg_mode_return)
 
         self.is_triggered = True
 
@@ -94,10 +99,14 @@ class CoreNodeController():
         self.is_triggered = True
 
     def fnControlNode(self): 
+
+        # rospy.loginfo(f'Current Step: {self.}')
+
         # lane_following
         if self.current_mode == self.CurrentMode.lane_following.value:
-            rospy.loginfo("Current step : searching sign")
-            rospy.loginfo("Go to next step : parking")
+            # rospy.loginfo("Current step : searching sign")
+            # rospy.loginfo("Go to next step : parking")
+            rospy.loginfo_once("Lane Following...")
 
             self.fnLaunch(self.Launcher.launch_camera_ex_calib.value, True)
 
@@ -107,17 +116,17 @@ class CoreNodeController():
 
             self.fnLaunch(self.Launcher.launch_control_lane.value, True)
             self.fnLaunch(self.Launcher.launch_control_moving.value, False)
+            self.fnLaunch(self.Launcher.launch_control_parking.value, False)
+            self.is_parking_start = False
 
         # parking
         elif self.current_mode == self.CurrentMode.parking.value:
-            rospy.loginfo("New trigger for parking")
+            # rospy.loginfo("New trigger for parking")
             msg_pub_parking_order = UInt8()
 
-            if self.current_step_parking == self.StepOfParking.parking.value:
-                rospy.loginfo("Current step : parking")
-                rospy.loginfo("Go to next step : finish parking")
-
-                msg_pub_parking_order.data = self.StepOfParking.parking.value
+            if self.current_step_parking == self.StepOfParking.searching_parking_point_line.value:
+                
+                msg_pub_parking_order.data = self.StepOfParking.searching_parking_point_line.value
 
                 self.fnLaunch(self.Launcher.launch_camera_ex_calib.value, True)
 
@@ -125,24 +134,45 @@ class CoreNodeController():
                 self.fnLaunch(self.Launcher.launch_detect_sign.value, False)
                 self.fnLaunch(self.Launcher.launch_detect_parking.value, True)
 
-                self.fnLaunch(self.Launcher.launch_control_lane.value, False)
-                self.fnLaunch(self.Launcher.launch_control_moving.value, True)
-                                   
-            elif self.current_step_parking == self.StepOfParking.exit.value:
-                rospy.loginfo("Current step : finish parking")
+                self.fnLaunch(self.Launcher.launch_control_lane.value, True)
+                self.fnLaunch(self.Launcher.launch_control_moving.value, False)
+                self.fnLaunch(self.Launcher.launch_control_parking.value, False)
+                self.is_parking_start = False
 
-                msg_pub_parking_order.data = self.StepOfParking.exit.value
+                msg_pub_trigger_parking = UInt8()
+                msg_pub_trigger_parking.data = 1
+                self.pub_trigger_parking.publish(msg_pub_trigger_parking)
+
+                print('Searching parking....')
+
+            elif self.current_step_parking == self.StepOfParking.parking.value:
+                # rospy.loginfo("Current step : parking")
+                # rospy.loginfo("Go to next step : finish parking")
+
+                msg_pub_parking_order.data = self.StepOfParking.parking.value
 
                 self.fnLaunch(self.Launcher.launch_camera_ex_calib.value, True)
 
-                self.fnLaunch(self.Launcher.launch_detect_sign.value, True)
-                self.fnLaunch(self.Launcher.launch_detect_lane.value, True)
+                self.fnLaunch(self.Launcher.launch_detect_lane.value, False)
+                self.fnLaunch(self.Launcher.launch_detect_sign.value, False)
                 self.fnLaunch(self.Launcher.launch_detect_parking.value, False)
 
-                self.fnLaunch(self.Launcher.launch_control_lane.value, True)
+                self.fnLaunch(self.Launcher.launch_control_lane.value, False)
                 self.fnLaunch(self.Launcher.launch_control_moving.value, False)
+                self.fnLaunch(self.Launcher.launch_control_parking.value, True)
+
+
+                # if self.is_parking_start == False:
+                if self.current_step_parking == self.StepOfParking.parking.value:
+                    msg_parking_start = UInt8()
+                    msg_parking_start.data = 1
+                    self.pub_parking_start.publish(msg_parking_start)
+                    self.is_parking_start = True
+
+                rospy.loginfo('Parking... Boy')
 
             rospy.sleep(2)
+            rospy.loginfo(f"CNC:  {msg_pub_parking_order.data}")
             self.pub_parking_order.publish(msg_pub_parking_order)
 
 
@@ -165,6 +195,7 @@ class CoreNodeController():
         elif launch_num == self.Launcher.launch_detect_sign.value:
             if is_start == True:
                 if self.launch_detect_sign_launched == False:
+                    print("Launching detect sign")
                     self.launch_detect_sign = roslaunch.scriptapi.ROSLaunch()
                     self.launch_detect_sign = roslaunch.parent.ROSLaunchParent(self.uuid, [self.ros_package_path + "turtlebot3_autorace_detect/launch/detect_sign.launch"])
                     self.launch_detect_sign_launched = True
