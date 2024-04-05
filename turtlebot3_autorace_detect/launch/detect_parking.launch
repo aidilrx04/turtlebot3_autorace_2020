@@ -1,5 +1,6 @@
 <launch>
   <node pkg="turtlebot3_autorace_detect" type="detect_parking" name="detect_parking" output="screen">
     <remap from="/detect/scan" to="/scan" />
+    <remap from="/detect/image_input" to="/camera/image_projected_compensated"/>
   </node>
 </launch>
