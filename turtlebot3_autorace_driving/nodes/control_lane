@@ -52,12 +52,17 @@ class ControlLane():
         twist = Twist()
         # twist.linear.x = 0.05        
         twist.linear.x = min(self.MAX_VEL * ((1 - abs(error) / 500) ** 2.2), 0.05)
+        # twist.linear.x = self.MAX_VEL
         twist.linear.y = 0
         twist.linear.z = 0
         twist.angular.x = 0
         twist.angular.y = 0
         twist.angular.z = -max(angular_z, -2.0) if angular_z < 0 else -min(angular_z, 2.0)
+        # print(f"Turning angle: {twist.angular.z}")
         self.pub_cmd_vel.publish(twist)
+
+        # check if kuning line is visible
+        # if not visible, we know we are at near corner
 
     def fnShutDown(self):
         rospy.loginfo("Shutting down. cmd_vel will be 0")
