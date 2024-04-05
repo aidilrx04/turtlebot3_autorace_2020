@@ -124,12 +124,12 @@ class DetectSign():
 
                 self.pub_traffic_sign.publish(msg_sign)
 
-                rospy.loginfo("parking")
+                rospy.loginfo_throttle(1, "parking")
                 image_out_num = 2
 
         else:
             matchesMask_parking = None
-            rospy.loginfo("nothing")
+            rospy.logdebug_throttle(1, "nothing")
 
 
         if image_out_num == 1:
