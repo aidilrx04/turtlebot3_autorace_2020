@@ -92,6 +92,7 @@ class CoreNodeController():
         # reset shit
         self.current_mode = self.CurrentMode.lane_following.value
         self.is_parking_start = False
+        self.current_step_parking = self.StepOfParking.searching_parking_point_line.value
 
         msg_current_mode = UInt8()
         msg_current_mode.data = self.current_mode
