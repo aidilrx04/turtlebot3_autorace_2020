@@ -226,6 +226,20 @@ class CoreNodeController():
                     self.launch_control_moving_launched = False
                     self.launch_control_moving.shutdown()
                 pass
+        elif launch_num == self.Launcher.launch_control_parking.value:
+            if is_start == True:
+                if self.launch_control_parking_launched == False:
+                    rospy.loginfo('Starting control parking...')
+                    self.launch_control_parking = roslaunch.scriptapi.ROSLaunch()
+                    self.launch_control_parking = roslaunch.parent.ROSLaunchParent(self.uuid, [self.ros_package_path + "turtlebot3_autorace_driving/launch/turtlebot3_autorace_control_parking.launch"])
+                    self.launch_control_parking_launched = True
+                    self.launch_control_parking.start()
+                else:
+                    pass
+            else:
+                if self.launch_control_parking_launched == True:
+                    self.launch_control_parking_launched = False
+                    self.launch_control_parking.shutdown()
 
     def main(self):
         rospy.spin()
