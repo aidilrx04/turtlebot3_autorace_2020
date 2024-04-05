@@ -34,6 +34,7 @@ class CoreNodeController():
         # subscribes : status returned
         self.sub_parking_stamped = rospy.Subscriber('/detect/parking_stamped', UInt8, self.cbParkingStamped, queue_size=1)
         self.sub_mode_control = rospy.Subscriber('/core/decided_mode', UInt8, self.cbReceiveMode, queue_size=1)
+        self.sub_parking_finished = rospy.Subscriber('/control/parking_finished', UInt8, self.cbParkingFinished, queue_size=1)
         
         # publishes orders
         self.pub_parking_order = rospy.Publisher('/detect/parking_order', UInt8, queue_size=1)   
@@ -80,6 +81,16 @@ class CoreNodeController():
             msg_mode_return.data = self.current_mode
             self.pub_mode_return.publish(msg_mode_return)
 
+        self.is_triggered = True
+
+    def cbParkingFinished(self, _):
+        # reset shit
+        self.current_mode = self.CurrentMode.lane_following.value
+        self.is_parking_start = False
+
+        msg_current_mode = UInt8()
+        msg_current_mode.data = self.current_mode
+        self.pub_mode_return.publish(msg_current_mode)
         self.is_triggered = True
 
     def fnControlNode(self): 
