@@ -24,6 +24,7 @@ class DetectParking():
         self.sub_parking_order = rospy.Subscriber('/detect/parking_order', UInt8, self.cbParkingOrder, queue_size=1)
         self.sub_image = rospy.Subscriber('/detect/image_input', Image, self.cbGetImage, queue_size=1)
         self.sub_parking_trigger = rospy.Subscriber('/detect/trigger_parking', UInt8, self.cbTriggerParking, queue_size=1)
+        self.sub_turn_finish = rospy.Subscriber('/control/turn_finish', UInt8, self.cbTurnFinish, queue_size=1)
 
         # pub states
         self.pub_parking_return = rospy.Publisher('/detect/parking_stamped', UInt8, queue_size=1)
@@ -36,12 +37,14 @@ class DetectParking():
 
         self.is_obstacle_detected = False
         self.is_parking_allowed = True
+        self.is_turn_finished = False
 
         self.cv_image = None
 
         self.is_triggered = False
         self.is_finish_detect = False
         self.is_control_parking_triggered = False
+        rospy.logerr_once("DETECT PARKING")
 
         while not rospy.is_shutdown():
             if self.is_triggered and not self.is_finish_detect:
@@ -55,24 +58,33 @@ class DetectParking():
     def cbTriggerParking(self, _):
         rospy.loginfo_once("Detect parking triggered!")
         self.is_triggered = True
+    
+    def cbTurnFinish(self, _):
+        rospy.loginfo_once("Turning is finish, proceed searching parking point line")
+        self.is_turn_finished = True
 
     def fnDetectParkingControl(self):
         rospy.loginfo_throttle(10, "Kontoling the detect")
+
+        if not self.is_turn_finished:
+            rospy.loginfo_once("Turning is not finish yet")
+            return
+        
         
         if self.current_parking_step == self.StepOfParking.searching_parking_point_line.value:
-            rospy.loginfo("Searching parking point line")
+            rospy.loginfo_once("Searching parking point line")
 
             while True:
                 if self.fnFindDotLine():
                     break
 
-            rospy.loginfo("Found parking point line")
-            rospy.loginfo("TIDOR LU")
-            rospy.sleep(5)
+            rospy.loginfo_once("Found parking point line")
+            rospy.loginfo_once("TIDOR LU")
+            rospy.sleep(4)
             self.current_parking_step = self.StepOfParking.searching_nonreserved_parking_area.value
 
         elif self.current_parking_step == self.StepOfParking.searching_nonreserved_parking_area.value:
-            rospy.loginfo('Searching non reserved parking area')
+            rospy.loginfo_once('Searching non reserved parking area')
             
             msg_max_vel = Float64()
             msg_max_vel.data = 0.10
@@ -81,18 +93,18 @@ class DetectParking():
             while True:
                 if self.is_obstacle_detected == False:
                     self.is_parking_allowed = True
-                    rospy.loginfo("First Parking area is available")
+                    rospy.loginfo_once("First Parking area is available")
                     break
                 else:
                     self.is_parking_allowed = False
-                    rospy.loginfo("First parking area is full!")
+                    rospy.loginfo_once("First parking area is full!")
                     break
 
             if not self.is_parking_allowed:
-                rospy.loginfo("SLEEPING BABI")
+                rospy.loginfo_once("SLEEPING BABI")
                 rospy.sleep(5)
 
-            rospy.loginfo("Now parking...")
+            rospy.loginfo_once("Now parking...")
             msg_max_vel = Float64()
             msg_max_vel.data = 0
             self.pub_max_vel.publish(msg_max_vel)
@@ -102,17 +114,18 @@ class DetectParking():
         elif self.current_parking_step == self.StepOfParking.parking.value:
 
             if self.is_control_parking_triggered == False:
-                rospy.loginfo("Now parking ")
+                rospy.loginfo_once("Now parking ")
                 msg_pub_parking_return = UInt8()
                 msg_pub_parking_return.data = self.StepOfParking.parking.value
                 self.pub_parking_return.publish(msg_pub_parking_return)
                 self.is_finish_detect = True
+                self.current_parking_step = self.StepOfParking.searching_parking_point_line.value
             
             # turn on parking detection
             # self.is_triggered = False
 
         else:
-            rospy.loginfo(f'Unknown parking step: {self.current_parking_step}')
+            rospy.loginfo_once(f'Unknown parking step: {self.current_parking_step}')
 
         pass
 
