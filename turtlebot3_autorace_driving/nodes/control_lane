@@ -19,26 +19,75 @@
 
 # Author: Leon Jung, Gilbert, Ashe Kim
  
+from enum import Enum
+import math
+from nav_msgs.msg import Odometry
 import rospy
 import numpy as np
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, UInt8
 from geometry_msgs.msg import Twist
+import tf
 
 class ControlLane():
     def __init__(self):
         self.sub_lane = rospy.Subscriber('/control/lane', Float64, self.cbFollowLane, queue_size = 1)
         self.sub_max_vel = rospy.Subscriber('/control/max_vel', Float64, self.cbGetMaxVel, queue_size = 1)
+        self.sub_yellow_line_reliability = rospy.Subscriber('/detect/yellow_line_reliability', UInt8, self.cbYellowLineReliability, queue_size=1)
+        self.sub_odom = rospy.Subscriber('/odom', Odometry, self.cbOdom, queue_size=1)
+
         self.pub_cmd_vel = rospy.Publisher('/control/cmd_vel', Twist, queue_size = 1)
+        self.pub_max_vel = rospy.Publisher('/control/max_vel', Float64, queue_size=1)
+        self.pub_turn_finish = rospy.Publisher('/control/turn_finish', UInt8, queue_size=1)
 
         self.lastError = 0
-        self.MAX_VEL = 0.1
+        self.MAX_VEL = 0.1  
+        self.prev_max_vel = 0
+
+        self.is_manually_control_triggered = False
+        self.yellow_line_reliability = 100
+        self.min_tolerable_yellow_line_reliability = 0
+
+        self.theta = 0.0
+        self.last_current_theta = 0.0   
+
+        self.StepOfManual = Enum("StepOfManual", "straight left complete")
+        self.current_step_of_manual = self.StepOfManual.straight.value
+        self.is_step_start = False
 
         rospy.on_shutdown(self.fnShutDown)
+
+        while not rospy.is_shutdown():
+            if self.is_manually_control_triggered:
+                self.fnManualControlLane()
+            # rospy.sleep(1)
 
     def cbGetMaxVel(self, max_vel_msg):
         self.MAX_VEL = max_vel_msg.data
 
+    def cbYellowLineReliability(self, msg_yellow_line_reliability):
+        self.yellow_line_reliability = msg_yellow_line_reliability.data
+        # rospy.loginfo(self.yellow_line_reliability)
+
+        if self.is_manually_control_triggered == False:
+            if self.yellow_line_reliability <= self.min_tolerable_yellow_line_reliability:
+                # pass
+                self.is_manually_control_triggered = True
+
     def cbFollowLane(self, desired_center):
+
+        # rospy.loginfo("KOTE")
+
+        # check if kuning line is visible
+        # if not visible, we know we are at near corner
+
+        # check if realibility is less than 50
+        if self.yellow_line_reliability <= self.min_tolerable_yellow_line_reliability or self.is_step_start == True:
+            # manually control lane
+            rospy.loginfo_once("Manually control lane")
+            return
+
+        rospy.loginfo_once("Automatically control lane")
+        rospy.loginfo_once(f"MAX_VEL: {self.MAX_VEL}" )
         center = desired_center.data
 
         error = center - 500
@@ -51,7 +100,7 @@ class ControlLane():
         
         twist = Twist()
         # twist.linear.x = 0.05        
-        twist.linear.x = min(self.MAX_VEL * ((1 - abs(error) / 500) ** 2.2), 0.05)
+        twist.linear.x = min(self.MAX_VEL * ((1 - abs(error) / 500) ** 2.2), 0.10)
         # twist.linear.x = self.MAX_VEL
         twist.linear.y = 0
         twist.linear.z = 0
@@ -61,8 +110,137 @@ class ControlLane():
         # print(f"Turning angle: {twist.angular.z}")
         self.pub_cmd_vel.publish(twist)
 
-        # check if kuning line is visible
-        # if not visible, we know we are at near corner
+    def fnManualControlLane(self):
+        # go straight
+        if self.current_step_of_manual == self.StepOfManual.straight.value:
+            rospy.loginfo_once("Go straight a bit...")
+            if self.is_step_start == False:
+                self.lastError = 0.0
+                self.start_post_x = self.current_pos_x
+                self.start_post_y = self.current_pos_y
+                self.is_step_start = True
+
+            error = self.fnStraight(0.37)
+            rospy.loginfo(error)
+
+            if math.fabs(error) < 0.005:
+                rospy.loginfo_once("Straight a bit finished")
+                self.current_step_of_manual = self.StepOfManual.left.value
+                self.prev_max_vel = self.MAX_VEL
+                msg_pub_max_vel = Float64()
+                msg_pub_max_vel.data = 0
+                self.pub_max_vel.publish(msg_pub_max_vel)
+                self.fnStop()
+                self.is_step_start = False
+                # self.is_manually_control_triggered = False
+
+        # turn left
+        elif self.current_step_of_manual == self.StepOfManual.left.value:
+            rospy.loginfo_once("Turning left..")
+
+            if self.is_step_start == False:
+                self.lastError = 0.0
+                self.desired_theta = self.current_theta + 1.57
+                self.is_step_start = True
+
+            error = self.fnTurn()
+
+            if math.fabs(error) < 0.05:
+                rospy.loginfo_once("konah setel brother")
+                self.current_step_of_manual = self.StepOfManual.complete.value
+                self.is_step_start = False
+
+        # and complete
+        elif self.current_step_of_manual == self.StepOfManual.complete.value:
+            rospy.loginfo_once("Complete manual!")
+            rospy.sleep(5)
+            self.lastError = 0
+            self.is_manually_control_triggered = False
+            self.is_step_start = False
+            self.MAX_VEL = self.prev_max_vel
+            self.current_step_of_manual = self.StepOfManual.straight.value
+
+            # pub turn complete then proceed with searching parking point line
+            msg_pub_turn_finish = UInt8()
+            msg_pub_turn_finish.data = 1
+            self.pub_turn_finish.publish(msg_pub_turn_finish)
+        
+        
+
+
+        pass
+
+    def fnStraight(self, desired_dist):
+        err_pos = math.sqrt((self.current_pos_x - self.start_post_x) ** 2 + (self.current_pos_y - self.start_post_y) ** 2) - desired_dist
+
+        Kp = 0.4
+        Kd = 0.05
+
+        angular_z = Kp * err_pos + Kd * (err_pos - self.lastError)
+        self.lastError = err_pos
+
+        twist = Twist()
+        twist.linear.x = min(0.07, self.MAX_VEL)
+        twist.linear.y = 0
+        twist.linear.z = 0
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = 0
+
+        # rospy.loginfo('going straight')
+        self.pub_cmd_vel.publish(twist)
+
+        return err_pos
+
+        pass
+
+    def fnTurn(self):
+        err_theta = self.current_theta - self.desired_theta
+        
+        # rospy.loginfo("Parking_Turn")
+        # rospy.loginfo("err_theta  desired_theta  current_theta : %f  %f  %f", err_theta, self.desired_theta, self.current_theta)
+        Kp = 0.8
+
+        Kd = 0.03
+
+        angular_z = Kp * err_theta + Kd * (err_theta - self.lastError)
+        self.lastError = err_theta
+
+        twist = Twist()
+        twist.linear.x = 0
+        twist.linear.y = 0
+        twist.linear.z = 0
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = -angular_z
+        self.pub_cmd_vel.publish(twist)
+
+        # rospy.loginfo("angular_z : %f", angular_z)
+
+        return err_theta
+
+        pass
+
+    def cbOdom(self, odom_msg):
+        quaternion = (odom_msg.pose.pose.orientation.x, odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z, odom_msg.pose.pose.orientation.w)
+        self.current_theta = self.euler_from_quaternion(quaternion)
+
+        if (self.current_theta - self.last_current_theta) < -math.pi:
+            self.current_theta = 2. * math.pi + self.current_theta
+            self.last_current_theta = math.pi
+        elif (self.current_theta - self.last_current_theta) > math.pi:
+            self.current_theta = -2. * math.pi + self.current_theta
+            self.last_current_theta = -math.pi
+        else:
+            self.last_current_theta = self.current_theta
+
+        self.current_pos_x = odom_msg.pose.pose.position.x
+        self.current_pos_y = odom_msg.pose.pose.position.y
+
+    def euler_from_quaternion(self, quaternion):
+        theta = tf.transformations.euler_from_quaternion(quaternion)[2]
+        return theta
+
 
     def fnShutDown(self):
         rospy.loginfo("Shutting down. cmd_vel will be 0")
@@ -75,6 +253,16 @@ class ControlLane():
         twist.angular.y = 0
         twist.angular.z = 0
         self.pub_cmd_vel.publish(twist) 
+
+    def fnStop(self):
+        twist = Twist()
+        twist.linear.x = 0
+        twist.linear.y = 0
+        twist.linear.z = 0
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = 0
+        self.pub_cmd_vel.publish(twist)
 
     def main(self):
         rospy.spin()
