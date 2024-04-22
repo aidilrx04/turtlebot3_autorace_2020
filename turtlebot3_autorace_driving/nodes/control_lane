@@ -50,15 +50,15 @@ class ControlLane():
         self.theta = 0.0
         self.last_current_theta = 0.0   
 
-        self.StepOfManual = Enum("StepOfManual", "straight left complete")
-        self.current_step_of_manual = self.StepOfManual.straight.value
+        self.StepOfStep = Enum("StepOfManual", "straight left complete")
+        self.current_step_of_manual = self.StepOfStep.straight.value
         self.is_step_start = False
 
         rospy.on_shutdown(self.fnShutDown)
 
         while not rospy.is_shutdown():
             if self.is_manually_control_triggered:
-                self.fnManualControlLane()
+                self.fnFollowWhiteLane()
             # rospy.sleep(1)
 
     def cbGetMaxVel(self, max_vel_msg):
@@ -83,7 +83,7 @@ class ControlLane():
         # check if realibility is less than 50
         if self.yellow_line_reliability <= self.min_tolerable_yellow_line_reliability or self.is_step_start == True:
             # manually control lane
-            rospy.loginfo_once("Manually control lane")
+            # rospy.loginfo_once("Manually control lane")
             return
 
         rospy.loginfo_once("Automatically control lane")
@@ -110,22 +110,23 @@ class ControlLane():
         # print(f"Turning angle: {twist.angular.z}")
         self.pub_cmd_vel.publish(twist)
 
-    def fnManualControlLane(self):
+    def fnFollowWhiteLane(self):
         # go straight
-        if self.current_step_of_manual == self.StepOfManual.straight.value:
-            rospy.loginfo_once("Go straight a bit...")
+        if self.current_step_of_manual == self.StepOfStep.straight.value:
+            rospy.loginfo_once("Yellow lane is no longer reliable")
+            rospy.loginfo_once("Following white lane.")
             if self.is_step_start == False:
                 self.lastError = 0.0
                 self.start_post_x = self.current_pos_x
                 self.start_post_y = self.current_pos_y
                 self.is_step_start = True
 
-            error = self.fnStraight(0.37)
+            error = self.fnHandle(0.37)
             rospy.loginfo(error)
 
             if math.fabs(error) < 0.005:
-                rospy.loginfo_once("Straight a bit finished")
-                self.current_step_of_manual = self.StepOfManual.left.value
+                rospy.loginfo_once("White lane is no longer reliable!")
+                self.current_step_of_manual = self.StepOfStep.left.value
                 self.prev_max_vel = self.MAX_VEL
                 msg_pub_max_vel = Float64()
                 msg_pub_max_vel.data = 0
@@ -135,7 +136,7 @@ class ControlLane():
                 # self.is_manually_control_triggered = False
 
         # turn left
-        elif self.current_step_of_manual == self.StepOfManual.left.value:
+        elif self.current_step_of_manual == self.StepOfStep.left.value:
             rospy.loginfo_once("Turning left..")
 
             if self.is_step_start == False:
@@ -146,19 +147,18 @@ class ControlLane():
             error = self.fnTurn()
 
             if math.fabs(error) < 0.05:
-                rospy.loginfo_once("konah setel brother")
-                self.current_step_of_manual = self.StepOfManual.complete.value
+                # rospy.loginfo_once("konah setel brother")
+                self.current_step_of_manual = self.StepOfStep.complete.value
                 self.is_step_start = False
 
         # and complete
-        elif self.current_step_of_manual == self.StepOfManual.complete.value:
-            rospy.loginfo_once("Complete manual!")
+        elif self.current_step_of_manual == self.StepOfStep.complete.value:
             rospy.sleep(5)
             self.lastError = 0
             self.is_manually_control_triggered = False
             self.is_step_start = False
             self.MAX_VEL = self.prev_max_vel
-            self.current_step_of_manual = self.StepOfManual.straight.value
+            self.current_step_of_manual = self.StepOfStep.straight.value
 
             # pub turn complete then proceed with searching parking point line
             msg_pub_turn_finish = UInt8()
@@ -170,7 +170,8 @@ class ControlLane():
 
         pass
 
-    def fnStraight(self, desired_dist):
+        # handle
+    def fnHandle(self, desired_dist):
         err_pos = math.sqrt((self.current_pos_x - self.start_post_x) ** 2 + (self.current_pos_y - self.start_post_y) ** 2) - desired_dist
 
         Kp = 0.4
