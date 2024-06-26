@@ -25,11 +25,13 @@ class DetectParking():
         self.sub_image = rospy.Subscriber('/detect/image_input', Image, self.cbGetImage, queue_size=1)
         self.sub_parking_trigger = rospy.Subscriber('/detect/trigger_parking', UInt8, self.cbTriggerParking, queue_size=1)
         self.sub_turn_finish = rospy.Subscriber('/control/turn_finish', UInt8, self.cbTurnFinish, queue_size=1)
+        self.sub_parking_count = rospy.Subscriber('/detect/parking_count', UInt8, self.cbParkingCount, queue_size=1)
 
         # pub states
         self.pub_parking_return = rospy.Publisher('/detect/parking_stamped', UInt8, queue_size=1)
         self.pub_max_vel = rospy.Publisher('/control/max_vel', Float64, queue_size=1)
         self.pub_parking_start = rospy.Publisher('/control/parking_start', UInt8, queue_size=1)
+        self.pub_detect_parking_start = rospy.Publisher('/control/detect_parking_start', UInt8, queue_size=1)
 
 
         self.StepOfParking = Enum('StepOfParking', 'searching_parking_point_line searching_nonreserved_parking_area parking')
@@ -38,6 +40,8 @@ class DetectParking():
         self.is_obstacle_detected = False
         self.is_parking_allowed = True
         self.is_turn_finished = False
+
+        self.parking_count = 0
 
         self.cv_image = None
 
@@ -63,8 +67,16 @@ class DetectParking():
         rospy.loginfo_once("Turning is finish, proceed searching parking point line")
         self.is_turn_finished = True
 
+    def cbParkingCount(self, count):
+        self.parking_count = count.data
+
+
     def fnDetectParkingControl(self):
         rospy.loginfo_throttle(10, "Kontoling the detect")
+
+        msg_pub_detect_parking_start = UInt8()
+        msg_pub_detect_parking_start.data = 1
+        self.pub_detect_parking_start.publish(msg_pub_detect_parking_start)
 
         if not self.is_turn_finished:
             rospy.loginfo_once("Turning is not finish yet")
@@ -80,7 +92,13 @@ class DetectParking():
 
             rospy.loginfo_once("Found parking point line")
             rospy.loginfo_once("TIDOR LU")
-            rospy.sleep(4)
+
+            rospy.loginfo_once(f"Parking Count: {self.parking_count}")
+
+            if self.parking_count % 2 == 0:
+                rospy.sleep(2)
+            else:
+                rospy.sleep(7)
             self.current_parking_step = self.StepOfParking.searching_nonreserved_parking_area.value
 
         elif self.current_parking_step == self.StepOfParking.searching_nonreserved_parking_area.value:
@@ -101,8 +119,8 @@ class DetectParking():
                     break
 
             if not self.is_parking_allowed:
-                rospy.loginfo_once("SLEEPING BABI")
-                rospy.sleep(5)
+                rospy.loginfo_once("SLEEPING BABY")
+                rospy.sleep(6)
 
             rospy.loginfo_once("Now parking...")
             msg_max_vel = Float64()
@@ -185,9 +203,9 @@ class DetectParking():
 
     def cbScanObstacle(self, scan: LaserScan):
         angle_scan = 60
-        scan_start = 270 - angle_scan
+        scan_start = 240 - angle_scan
         scan_end = 270 + angle_scan
-        threshold_distance = 0.5
+        threshold_distance = 1
         is_obstacle_detected = False
 
         for i in range(scan_start, scan_end):

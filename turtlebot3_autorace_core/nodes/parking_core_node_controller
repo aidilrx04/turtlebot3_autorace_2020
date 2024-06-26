@@ -41,6 +41,7 @@ class CoreNodeController():
         self.pub_mode_return = rospy.Publisher('/core/returned_mode', UInt8, queue_size=1)
         self.pub_parking_start = rospy.Publisher('/control/parking_start', UInt8, queue_size=1)
         self.pub_trigger_parking = rospy.Publisher('/detect/trigger_parking', UInt8, queue_size=1)
+        self.pub_parking_count = rospy.Publisher('/detect/parking_count', UInt8, queue_size=1)
 
         self.CurrentMode = Enum('CurrentMode', 'idle lane_following parking')
         self.current_mode = self.CurrentMode.idle.value
@@ -58,6 +59,9 @@ class CoreNodeController():
         self.launch_control_lane_launched = False
         self.launch_control_moving_launched = False
         self.launch_control_parking_launched = False
+        
+        self.is_parking_count_set = False
+        self.parking_count = 0
 
         self.is_parking_start = False
 
@@ -65,6 +69,10 @@ class CoreNodeController():
 
         loop_rate = rospy.Rate(10) # 10hz
         while not rospy.is_shutdown():
+            msg_pub_parking_count = UInt8()
+            msg_pub_parking_count.data = self.parking_count
+            self.pub_parking_count.publish(msg_pub_parking_count)
+            
             if self.is_triggered == True:
                 self.fnControlNode()
             
@@ -99,6 +107,14 @@ class CoreNodeController():
         self.pub_mode_return.publish(msg_current_mode)
         self.is_triggered = True
 
+        if self.is_parking_count_set == False:
+            self.parking_count += 1
+            self.is_parking_count_set = True
+
+        msg_pub_parking_count = UInt8()
+        msg_pub_parking_count.data = self.parking_count
+        self.pub_parking_count.publish(msg_pub_parking_count)
+
     def fnControlNode(self): 
 
         # rospy.loginfo(f'Current Step: {self.}')
@@ -124,6 +140,8 @@ class CoreNodeController():
         elif self.current_mode == self.CurrentMode.parking.value:
             # rospy.loginfo("New trigger for parking")
             msg_pub_parking_order = UInt8()
+            
+            self.is_parking_count_set = False
 
             if self.current_step_parking == self.StepOfParking.searching_parking_point_line.value:
                 

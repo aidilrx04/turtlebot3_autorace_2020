@@ -116,7 +116,7 @@ class ControlParking():
             rospy.loginfo("parking_lot_stop")
             self.fnStop()
 
-            rospy.sleep(2)
+            rospy.sleep(3)
 
             rospy.loginfo("parking_lot_stop finished")
             self.current_step_of_parking = self.StepOfParking.parking_lot_turn_second.value
@@ -143,7 +143,7 @@ class ControlParking():
                 self.start_pos_y = self.current_pos_y
                 self.is_step_start = True
 
-            error = self.fnStraight(0.25)
+            error = self.fnStraight(0.26)
 
             if math.fabs(error) < 0.005:
                 rospy.loginfo("parking_lot_exit finished")

@@ -60,6 +60,7 @@ class ControlMoving():
         self.is_step_backward = False
 
         #moving internal valiables
+        self.starting_theta = None
         self.theta = 0.0
         self.current_theta = 0.0
         self.last_current_theta = 0.0
@@ -309,6 +310,10 @@ class ControlMoving():
 
         self.current_pos_x = odom_msg.pose.pose.position.x
         self.current_pos_y = odom_msg.pose.pose.position.y
+
+        # set starting point
+        if self.starting_theta == None:
+            self.starting_theta = self.current_theta
 
     def euler_from_quaternion(self, quaternion):
         theta = tf.transformations.euler_from_quaternion(quaternion)[2]

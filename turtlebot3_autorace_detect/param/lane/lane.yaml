@@ -1,17 +1,17 @@
 ---
-detect:
+detect: #tournament
   lane:
     white:
-      hue_l: 38
-      hue_h: 124
+      hue_l: 0
+      hue_h: 179
       saturation_l: 0
-      saturation_h: 57
-      lightness_l: 197
+      saturation_h: 12
+      lightness_l: 218
       lightness_h: 255
     yellow:
       hue_l: 0
-      hue_h: 35
-      saturation_l: 33
-      saturation_h: 255
-      lightness_l: 29
+      hue_h: 38
+      saturation_l: 13
+      saturation_h: 155
+      lightness_l: 0
       lightness_h: 255
